@@ -1,0 +1,131 @@
+pipeline {
+  agent {
+    label 'slave'
+  }
+  options {
+    ansiColor('xterm')
+    timestamps ()
+    buildDiscarder(logRotator(daysToKeepStr: '365'))
+  }
+  parameters {
+    choice(
+      name: 'deployment',
+      choices: [
+        'deploy-vm',
+        'clean-up',
+        'reset-vm'
+      ],
+      description: 'vm to deploy or destroy.'
+    )
+    choice(
+      name: 'project',
+      choices: [
+        'abc',
+        'xyz'
+        // 'ubuntu',
+        // 'ubuntu_clean-up',
+        // 'redhat_clean-up',
+        // 'redhat'
+      ],
+      description: 'select os to create vm.'
+    )
+    gitParameter (
+      name: 'deplrepo_revision',
+      description: 'deployment repository branch',
+      branchFilter: 'origin/.+',
+      defaultValue: 'origin/main',
+      type: 'PT_BRANCH',
+      quickFilterEnabled: false, selectedValue: 'NONE', sortMode: 'ASCENDING', tagFilter: '*',
+      listSize: '0'
+    )
+  }
+  environment {
+    GIT_CREDENTIAL_ID = 'GIT-access-token2'
+  }
+  stages {
+    stage('Checkout repositories') {
+      steps {
+        // checkout deployment repo
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: "${params.deplrepo_revision}"]],
+          extensions: [
+            [$class: 'CleanBeforeCheckout', deleteUntrackedNestedRepositories: true],
+            [$class: 'CloneOption', noTags: false]
+          ],
+          userRemoteConfigs: [[
+            credentialsId: env.GIT_CREDENTIAL_ID,
+            url: 'https://github.com/jagdishkumawat07/vagrant-public'
+          ]]
+        ])
+        script {commitId = sh(returnStdout: true, script: 'git rev-parse --short HEAD')}
+      }
+    }
+   stage('Deploy virtual machine') {
+    steps {
+     script {
+      if (params.project == 'abc' && params.deployment == 'deploy-vm') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        component = params.project
+        sh "echo '${component}'"
+        sh "./run.sh ${component}"
+      }
+      else if (params.project == 'xyz' && params.deployment == 'deploy-vm') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        component = params.project
+        sh "echo '${component}'"
+        sh "./run.sh ${component}"
+      }
+    }
+  }
+}
+  stage('Destroy virtual machine') {
+    steps {
+     script {
+      if (params.project == 'abc' && params.deployment == 'clean-up') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        // component = params.project
+        // sh "echo '${component}'"
+        sh "./run.sh abc_clean-up"
+      }
+      else if (params.project == 'xyz' && params.deployment == 'clean-up') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        // component = params.project
+        // sh "echo '${component}'"
+        sh "./run.sh xyz_clean-up"
+      }
+    }
+  }
+}
+  stage('Reset virtual machine') {
+    steps {
+     script {
+      if (params.deployment == 'reset-vm' && params.project == 'abc') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        sh "./run.sh 'reset-abc'"
+      }
+      else if (params.deployment == 'reset-vm' && params.project == 'xyz') {
+        currentBuild.displayName = env.BUILD_NUMBER + "-" + params.project
+        sh "./run.sh 'reset-xyz'"
+      }
+      else{
+        echo 'invalid combination'
+      }
+
+    }
+  }
+ }
+}
+  post {
+    success {
+      script {
+        sh "echo 'Jenkins ${JOB_BASE_NAME}' '#${BUILD_DISPLAY_NAME} Successful: <${BUILD_URL}|Open>'"
+      }
+    }
+    failure {
+      script {
+        sh "echo 'Jenkins ${JOB_BASE_NAME}' '#${BUILD_DISPLAY_NAME} Failed: <${env.BUILD_URL}|Open>'"
+      }
+    }
+  }
+}
